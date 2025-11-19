@@ -1,0 +1,23 @@
+{
+  "name": "api-gateway",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/api-gateway",
+  "projectType": "application",
+  "tags": ["type:backend", "scope:gateway"],
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python app.py",
+        "cwd": "apps/api-gateway"
+      }
+    },
+    "docker-build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker build -t ai-interview-gateway .",
+        "cwd": "apps/api-gateway"
+      }
+    }
+  }
+}

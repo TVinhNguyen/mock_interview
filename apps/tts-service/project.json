@@ -1,0 +1,23 @@
+{
+  "name": "tts-service",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/tts-service",
+  "projectType": "application",
+  "tags": ["type:backend", "scope:service"],
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python app.py",
+        "cwd": "apps/tts-service"
+      }
+    },
+    "docker-build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker build -t ai-interview-tts .",
+        "cwd": "apps/tts-service"
+      }
+    }
+  }
+}
