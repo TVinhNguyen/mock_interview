@@ -1,29 +1,17 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { MobileNav } from "@/components/mobile-nav"
 import { Notifications } from "@/components/notifications"
 import { Sparkles, LogOut, User } from "lucide-react"
-import { isAuthenticated, getUser, logout } from "@/lib/auth"
+import { useAuth } from "@/contexts/auth-context"
 
 export function Header() {
   const pathname = usePathname()
-  const router = useRouter()
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [user, setUser] = useState<{ full_name?: string; email?: string } | null>(null)
-
-  useEffect(() => {
-    // Kiểm tra auth status khi component mount
-    setIsLoggedIn(isAuthenticated())
-    const userData = getUser()
-    if (userData) {
-      setUser(userData as { full_name?: string; email?: string })
-    }
-  }, [pathname]) // Re-check khi pathname thay đổi
+  const { user, isAuthenticated, logout, isLoading } = useAuth()
 
   const handleLogout = () => {
     logout()
@@ -71,14 +59,14 @@ export function Header() {
 
         {/* Right Section */}
         <div className="flex items-center gap-2">
-          {isLoggedIn && <Notifications />}
+          {isAuthenticated && <Notifications />}
           <ThemeToggle />
 
-          {!isAuthPage && (
+          {!isAuthPage && !isLoading && (
             <>
               {/* Desktop Auth Buttons */}
               <div className="hidden md:flex items-center gap-2">
-                {isLoggedIn ? (
+                {isAuthenticated ? (
                   <>
                     {/* User Menu khi đã đăng nhập */}
                     <Link href="/profile">

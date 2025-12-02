@@ -11,13 +11,21 @@ from typing import Optional, Dict, Any
 
 app = FastAPI(title="AI Mock Interview - API Gateway", version="1.0.0")
 
-# CORS Configuration
+# CORS Configuration - Phải specify origins cụ thể khi dùng credentials
+# allow_origins=["*"] với allow_credentials=True không hoạt động theo spec CORS
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://frontend:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["set-cookie"],  # Cho phép browser đọc Set-Cookie header
 )
 
 # Microservices URLs
@@ -263,8 +271,14 @@ async def register(request: Request):
                 json=body,
                 timeout=10.0
             )
-            # Forward cả status code từ user-service
-            return JSONResponse(status_code=response.status_code, content=response.json())
+            # Forward cả status code và Set-Cookie header từ user-service
+            gateway_response = JSONResponse(status_code=response.status_code, content=response.json())
+            
+            # Forward Set-Cookie header để browser nhận được cookie
+            if "set-cookie" in response.headers:
+                gateway_response.headers["set-cookie"] = response.headers["set-cookie"]
+            
+            return gateway_response
         except httpx.HTTPStatusError as e:
             return JSONResponse(status_code=e.response.status_code, content=e.response.json())
         except Exception as e:
@@ -281,19 +295,34 @@ async def login(request: Request):
                 json=body,
                 timeout=10.0
             )
-            # Forward cả status code từ user-service
-            return JSONResponse(status_code=response.status_code, content=response.json())
+            # Forward cả status code và Set-Cookie header từ user-service
+            gateway_response = JSONResponse(status_code=response.status_code, content=response.json())
+            
+            # Forward Set-Cookie header để browser nhận được cookie
+            if "set-cookie" in response.headers:
+                gateway_response.headers["set-cookie"] = response.headers["set-cookie"]
+            
+            return gateway_response
         except httpx.HTTPStatusError as e:
             return JSONResponse(status_code=e.response.status_code, content=e.response.json())
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/auth/verify")
-async def verify_token(authorization: str = Header(None)):
+async def verify_token(request: Request, authorization: str = Header(None)):
     """Verify if token is valid and not expired"""
     async with httpx.AsyncClient() as client:
         try:
-            headers = {"Authorization": authorization} if authorization else {}
+            # Forward cả Authorization header và Cookie
+            headers = {}
+            if authorization:
+                headers["Authorization"] = authorization
+            
+            # Forward cookie từ request
+            cookie_header = request.headers.get("cookie")
+            if cookie_header:
+                headers["Cookie"] = cookie_header
+            
             response = await client.get(
                 f"{USER_SERVICE_URL}/auth/verify",
                 headers=headers,
@@ -305,18 +334,41 @@ async def verify_token(authorization: str = Header(None)):
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/auth/logout")
+async def logout(request: Request):
+    """Logout user and clear HttpOnly cookie"""
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{USER_SERVICE_URL}/auth/logout",
+                timeout=10.0
+            )
+            return JSONResponse(status_code=response.status_code, content=response.json())
+        except httpx.HTTPStatusError as e:
+            return JSONResponse(status_code=e.response.status_code, content=e.response.json())
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/auth/me")
-async def get_current_user(authorization: str = Header(None)):
+async def get_current_user(request: Request, authorization: str = Header(None)):
     """Get current user"""
     async with httpx.AsyncClient() as client:
         try:
-            headers = {"Authorization": authorization} if authorization else {}
+            headers = {}
+            if authorization:
+                headers["Authorization"] = authorization
+            
+            # Forward cookie từ request
+            cookie_header = request.headers.get("cookie")
+            if cookie_header:
+                headers["Cookie"] = cookie_header
+            
             response = await client.get(
                 f"{USER_SERVICE_URL}/auth/me",
                 headers=headers,
                 timeout=10.0
             )
-            return response.json()
+            return JSONResponse(status_code=response.status_code, content=response.json())
         except httpx.HTTPStatusError as e:
             return JSONResponse(status_code=e.response.status_code, content=e.response.json())
         except Exception as e:

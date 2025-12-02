@@ -192,6 +192,7 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_GATEWAY_URL=http://localhost:8000
+      - API_GATEWAY_INTERNAL=http://api-gateway:8000
     volumes:
       - ./apps/frontend:/app/apps/frontend
       - /app/apps/frontend/node_modules

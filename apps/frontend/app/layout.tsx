@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { ToastProvider } from "@/components/toast-provider"
+import { AuthProvider } from "@/contexts/auth-context"
 import { Header } from "@/components/header"
 import "./globals.css"
 
@@ -22,9 +23,11 @@ export default function RootLayout({
     <html lang="vi" suppressHydrationWarning>
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-          <Header />
-          {children}
-          <ToastProvider />
+          <AuthProvider>
+            <Header />
+            {children}
+            <ToastProvider />
+          </AuthProvider>
         </ThemeProvider>
         <Analytics />
       </body>

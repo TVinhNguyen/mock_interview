@@ -2,14 +2,18 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Mail, Lock, ArrowRight, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { login } = useAuth()
+  
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -32,50 +36,17 @@ export default function LoginPage() {
     setIsLoading(true)
     setError("")
 
-    try {
-      const response = await fetch("http://localhost:8000/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: email,
-          password: password,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        // Xử lý lỗi validation (422)
-        if (response.status === 422 && Array.isArray(data.detail)) {
-          const emailError = data.detail.find((err: { loc: string[] }) => err.loc?.includes("email"))
-          if (emailError) {
-            throw new Error("Email không hợp lệ. Vui lòng nhập đúng định dạng.")
-          }
-          throw new Error("Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.")
-        }
-        // Xử lý lỗi sai email/password
-        if (response.status === 401) {
-          throw new Error("Email hoặc mật khẩu không đúng.")
-        }
-        throw new Error(data.detail || "Đăng nhập thất bại")
-      }
-
-      // Lưu token vào cả localStorage và cookie (cookie cho middleware)
-      localStorage.setItem("token", data.access_token)
-      localStorage.setItem("user", JSON.stringify(data.user))
-      document.cookie = `token=${data.access_token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`
-      
-      // Kiểm tra callbackUrl để redirect về trang trước đó
-      const params = new URLSearchParams(window.location.search)
-      const callbackUrl = params.get('callbackUrl') || '/dashboard'
+    const result = await login(email, password)
+    
+    if (result.success) {
+      // Redirect về callbackUrl hoặc dashboard
+      const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
       router.push(callbackUrl)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Có lỗi xảy ra. Vui lòng thử lại.")
-    } finally {
-      setIsLoading(false)
+    } else {
+      setError(result.error || "Đăng nhập thất bại")
     }
+    
+    setIsLoading(false)
   }
 
   const handleGoogleLogin = () => {

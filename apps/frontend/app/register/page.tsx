@@ -2,15 +2,19 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Mail, Lock, User, ArrowRight, Eye, EyeOff, CheckCircle2, Loader2, AlertCircle } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function RegisterPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { register } = useAuth()
+  
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [name, setName] = useState("")
@@ -48,48 +52,18 @@ export default function RegisterPage() {
     setIsLoading(true)
     setError("")
 
-    try {
-      const response = await fetch("http://localhost:8000/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          password,
-          full_name: name,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        // Xử lý lỗi validation (422)
-        if (response.status === 422 && Array.isArray(data.detail)) {
-          const emailError = data.detail.find((err: { loc: string[] }) => err.loc?.includes("email"))
-          if (emailError) {
-            throw new Error("Email không hợp lệ. Vui lòng nhập đúng định dạng (ví dụ: ten@example.com)")
-          }
-          throw new Error("Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.")
-        }
-        // Xử lý lỗi email đã tồn tại
-        if (data.detail === "Email already registered" || response.status === 400) {
-          throw new Error("Email này đã được đăng ký. Vui lòng sử dụng email khác hoặc đăng nhập.")
-        }
-        throw new Error(data.detail || "Đăng ký thất bại")
-      }
-
-      // Lưu token vào cả localStorage và cookie (cookie cho middleware)
-      localStorage.setItem("token", data.access_token)
-      localStorage.setItem("user", JSON.stringify(data.user))
-      document.cookie = `token=${data.access_token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`
-      
+    const result = await register({
+      email,
+      password,
+      full_name: name,
+    })
+    if (result.success) {
       router.push("/dashboard")
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Có lỗi xảy ra. Vui lòng thử lại.")
-    } finally {
-      setIsLoading(false)
+    } else {
+      setError(result.error || "Đăng ký thất bại")
     }
+    
+    setIsLoading(false)
   }
 
   const handleGoogleRegister = () => {
