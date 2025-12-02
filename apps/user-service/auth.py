@@ -49,9 +49,23 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     return encoded_jwt
 
 def decode_token(token: str):
-    """Decode JWT token"""
+    """Decode JWT token and validate expiry
+    
+    Returns:
+        dict: Token payload if valid
+        None: If token is invalid or expired
+    """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # jwt.decode tự động kiểm tra expiry nếu có 'exp' claim
+        # Sẽ raise ExpiredSignatureError nếu token hết hạn
+        payload = jwt.decode(
+            token, 
+            SECRET_KEY, 
+            algorithms=[ALGORITHM],
+            options={"verify_exp": True}  # Explicitly verify expiration
+        )
         return payload
-    except JWTError:
+    except JWTError as e:
+        # Log lỗi để debug (có thể là expired, invalid signature, etc.)
+        print(f"Token validation failed: {type(e).__name__}: {str(e)}")
         return None

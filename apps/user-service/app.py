@@ -130,6 +130,20 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
         "user": UserResponse(**user.to_dict())
     }
 
+@app.get("/auth/verify")
+async def verify_token(current_user: Profile = Depends(get_current_user)):
+    """Verify if token is valid and not expired
+    
+    Returns:
+        200: Token is valid
+        401: Token is invalid or expired
+    """
+    return {
+        "valid": True,
+        "user_id": str(current_user.id),
+        "email": current_user.email
+    }
+
 @app.get("/auth/me", response_model=UserResponse)
 async def get_me(current_user: Profile = Depends(get_current_user)):
     """Get current user profile"""

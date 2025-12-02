@@ -30,9 +30,16 @@ export default function RegisterPage() {
     return 2
   }
 
+  // Validate email format
+  const isValidEmail = (emailStr: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(emailStr)
+  }
+
   const strength = passwordStrength(password)
   const passwordsMatch = password === confirmPassword && confirmPassword.length > 0
-  const isFormValid = name.length > 0 && email.length > 0 && password.length >= 6 && passwordsMatch && agreed
+  const emailValid = email.length === 0 || isValidEmail(email)
+  const isFormValid = name.length > 0 && email.length > 0 && isValidEmail(email) && password.length >= 6 && passwordsMatch && agreed
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -57,11 +64,26 @@ export default function RegisterPage() {
       const data = await response.json()
 
       if (!response.ok) {
+        // Xử lý lỗi validation (422)
+        if (response.status === 422 && Array.isArray(data.detail)) {
+          const emailError = data.detail.find((err: { loc: string[] }) => err.loc?.includes("email"))
+          if (emailError) {
+            throw new Error("Email không hợp lệ. Vui lòng nhập đúng định dạng (ví dụ: ten@example.com)")
+          }
+          throw new Error("Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.")
+        }
+        // Xử lý lỗi email đã tồn tại
+        if (data.detail === "Email already registered" || response.status === 400) {
+          throw new Error("Email này đã được đăng ký. Vui lòng sử dụng email khác hoặc đăng nhập.")
+        }
         throw new Error(data.detail || "Đăng ký thất bại")
       }
 
+      // Lưu token vào cả localStorage và cookie (cookie cho middleware)
       localStorage.setItem("token", data.access_token)
       localStorage.setItem("user", JSON.stringify(data.user))
+      document.cookie = `token=${data.access_token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`
+      
       router.push("/dashboard")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra. Vui lòng thử lại.")
@@ -186,9 +208,17 @@ export default function RegisterPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={isLoading}
-                  className="h-11 sm:h-12 pl-10 bg-secondary/50 border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                  className={`h-11 sm:h-12 pl-10 bg-secondary/50 border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-primary ${
+                    email.length > 0 && !emailValid ? "border-destructive focus:ring-destructive" : ""
+                  }`}
                 />
               </div>
+              {email.length > 0 && !emailValid && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  Email không hợp lệ (ví dụ: ten@example.com)
+                </p>
+              )}
             </div>
 
             {/* Password Field */}

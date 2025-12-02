@@ -16,7 +16,14 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
-  const isFormValid = email.length > 0 && password.length > 0
+  // Validate email format
+  const isValidEmail = (emailStr: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(emailStr)
+  }
+
+  const emailValid = email.length === 0 || isValidEmail(email)
+  const isFormValid = email.length > 0 && isValidEmail(email) && password.length > 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,10 +36,10 @@ export default function LoginPage() {
       const response = await fetch("http://localhost:8000/auth/login", {
         method: "POST",
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Type": "application/json",
         },
-        body: new URLSearchParams({
-          username: email,
+        body: JSON.stringify({
+          email: email,
           password: password,
         }),
       })
@@ -40,12 +47,30 @@ export default function LoginPage() {
       const data = await response.json()
 
       if (!response.ok) {
+        // Xử lý lỗi validation (422)
+        if (response.status === 422 && Array.isArray(data.detail)) {
+          const emailError = data.detail.find((err: { loc: string[] }) => err.loc?.includes("email"))
+          if (emailError) {
+            throw new Error("Email không hợp lệ. Vui lòng nhập đúng định dạng.")
+          }
+          throw new Error("Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.")
+        }
+        // Xử lý lỗi sai email/password
+        if (response.status === 401) {
+          throw new Error("Email hoặc mật khẩu không đúng.")
+        }
         throw new Error(data.detail || "Đăng nhập thất bại")
       }
 
+      // Lưu token vào cả localStorage và cookie (cookie cho middleware)
       localStorage.setItem("token", data.access_token)
       localStorage.setItem("user", JSON.stringify(data.user))
-      router.push("/dashboard")
+      document.cookie = `token=${data.access_token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`
+      
+      // Kiểm tra callbackUrl để redirect về trang trước đó
+      const params = new URLSearchParams(window.location.search)
+      const callbackUrl = params.get('callbackUrl') || '/dashboard'
+      router.push(callbackUrl)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra. Vui lòng thử lại.")
     } finally {
@@ -152,9 +177,17 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={isLoading}
-                  className="h-12 pl-10 bg-secondary/50 border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                  className={`h-12 pl-10 bg-secondary/50 border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-primary ${
+                    email.length > 0 && !emailValid ? "border-destructive focus:ring-destructive" : ""
+                  }`}
                 />
               </div>
+              {email.length > 0 && !emailValid && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  Email không hợp lệ (ví dụ: ten@example.com)
+                </p>
+              )}
             </div>
 
             {/* Password Field */}

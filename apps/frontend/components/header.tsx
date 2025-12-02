@@ -1,15 +1,33 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { MobileNav } from "@/components/mobile-nav"
 import { Notifications } from "@/components/notifications"
-import { Sparkles } from "lucide-react"
+import { Sparkles, LogOut, User } from "lucide-react"
+import { isAuthenticated, getUser, logout } from "@/lib/auth"
 
 export function Header() {
   const pathname = usePathname()
+  const router = useRouter()
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [user, setUser] = useState<{ full_name?: string; email?: string } | null>(null)
+
+  useEffect(() => {
+    // Kiểm tra auth status khi component mount
+    setIsLoggedIn(isAuthenticated())
+    const userData = getUser()
+    if (userData) {
+      setUser(userData as { full_name?: string; email?: string })
+    }
+  }, [pathname]) // Re-check khi pathname thay đổi
+
+  const handleLogout = () => {
+    logout()
+  }
 
   // Don't show on interview page
   if (pathname === "/interview") return null
@@ -53,21 +71,44 @@ export function Header() {
 
         {/* Right Section */}
         <div className="flex items-center gap-2">
-          <Notifications />
+          {isLoggedIn && <Notifications />}
           <ThemeToggle />
 
           {!isAuthPage && (
             <>
               {/* Desktop Auth Buttons */}
               <div className="hidden md:flex items-center gap-2">
-                <Link href="/login">
-                  <Button variant="ghost" className="text-muted-foreground hover:text-foreground hover:bg-primary/10">
-                    Đăng nhập
-                  </Button>
-                </Link>
-                <Link href="/register">
-                  <Button className="bg-primary hover:bg-primary/90">Đăng ký</Button>
-                </Link>
+                {isLoggedIn ? (
+                  <>
+                    {/* User Menu khi đã đăng nhập */}
+                    <Link href="/profile">
+                      <Button variant="ghost" className="text-muted-foreground hover:text-foreground hover:bg-primary/10 gap-2">
+                        <User className="h-4 w-4" />
+                        {user?.full_name || "Tài khoản"}
+                      </Button>
+                    </Link>
+                    <Button 
+                      variant="ghost" 
+                      onClick={handleLogout}
+                      className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-2"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Đăng xuất
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {/* Auth Buttons khi chưa đăng nhập */}
+                    <Link href="/login">
+                      <Button variant="ghost" className="text-muted-foreground hover:text-foreground hover:bg-primary/10">
+                        Đăng nhập
+                      </Button>
+                    </Link>
+                    <Link href="/register">
+                      <Button className="bg-primary hover:bg-primary/90">Đăng ký</Button>
+                    </Link>
+                  </>
+                )}
               </div>
             </>
           )}

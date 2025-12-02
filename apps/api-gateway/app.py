@@ -263,7 +263,8 @@ async def register(request: Request):
                 json=body,
                 timeout=10.0
             )
-            return response.json()
+            # Forward cả status code từ user-service
+            return JSONResponse(status_code=response.status_code, content=response.json())
         except httpx.HTTPStatusError as e:
             return JSONResponse(status_code=e.response.status_code, content=e.response.json())
         except Exception as e:
@@ -280,7 +281,25 @@ async def login(request: Request):
                 json=body,
                 timeout=10.0
             )
-            return response.json()
+            # Forward cả status code từ user-service
+            return JSONResponse(status_code=response.status_code, content=response.json())
+        except httpx.HTTPStatusError as e:
+            return JSONResponse(status_code=e.response.status_code, content=e.response.json())
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/auth/verify")
+async def verify_token(authorization: str = Header(None)):
+    """Verify if token is valid and not expired"""
+    async with httpx.AsyncClient() as client:
+        try:
+            headers = {"Authorization": authorization} if authorization else {}
+            response = await client.get(
+                f"{USER_SERVICE_URL}/auth/verify",
+                headers=headers,
+                timeout=10.0
+            )
+            return JSONResponse(status_code=response.status_code, content=response.json())
         except httpx.HTTPStatusError as e:
             return JSONResponse(status_code=e.response.status_code, content=e.response.json())
         except Exception as e:
