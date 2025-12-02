@@ -1,0 +1,116 @@
+-- Enable UUID extension (Bắt buộc)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 1. Bảng PROFILES (Thông tin User) - Independent table, not linked to auth.users
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  full_name TEXT,
+  avatar_url TEXT,
+  job_title TEXT,
+  experience_level TEXT CHECK (experience_level IN ('Intern', 'Junior', 'Mid-Level', 'Senior')),
+  total_interviews INT DEFAULT 0,
+  avg_score FLOAT DEFAULT 0.0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 2. Bảng INTERVIEW_TEMPLATES (Danh mục các bài phỏng vấn hiển thị trên Dashboard)
+CREATE TABLE IF NOT EXISTS public.interview_templates (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  difficulty_level TEXT CHECK (difficulty_level IN ('Junior', 'Mid-Level', 'Senior', 'All Levels')),
+  topics TEXT[],
+  estimated_minutes INT DEFAULT 45,
+  total_questions INT DEFAULT 10,
+  icon_slug TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 3. Bảng QUESTIONS (Ngân hàng câu hỏi)
+CREATE TABLE IF NOT EXISTS public.questions (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  content TEXT NOT NULL,
+  type TEXT CHECK (type IN ('behavioral', 'technical', 'coding', 'system_design')),
+  difficulty TEXT CHECK (difficulty IN ('easy', 'medium', 'hard')),
+  tags TEXT[],
+  starter_code TEXT,
+  test_cases JSONB,
+  solution_note TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 4. Bảng TEMPLATE_QUESTIONS (Bảng nối giữa template và questions)
+CREATE TABLE IF NOT EXISTS public.template_questions (
+  template_id UUID REFERENCES public.interview_templates(id) ON DELETE CASCADE,
+  question_id UUID REFERENCES public.questions(id) ON DELETE CASCADE,
+  order_index INT,
+  PRIMARY KEY (template_id, question_id)
+);
+
+-- 5. Bảng INTERVIEWS (Phiên phỏng vấn thực tế)
+CREATE TABLE IF NOT EXISTS public.interviews (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  template_id UUID REFERENCES public.interview_templates(id),
+  title_snapshot TEXT,
+  level_snapshot TEXT,
+  status TEXT CHECK (status IN ('in_progress', 'completed', 'cancelled')) DEFAULT 'in_progress',
+  current_stage INT DEFAULT 1,
+  current_question_index INT DEFAULT 0,
+  overall_score INT,
+  duration_seconds INT DEFAULT 0,
+  feedback_summary TEXT,
+  started_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  ended_at TIMESTAMP WITH TIME ZONE
+);
+
+-- 6. Bảng INTERVIEW_MESSAGES (Chat Log)
+CREATE TABLE IF NOT EXISTS public.interview_messages (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  interview_id UUID REFERENCES public.interviews(id) ON DELETE CASCADE NOT NULL,
+  role TEXT CHECK (role IN ('ai', 'user', 'system')),
+  content TEXT,
+  audio_url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 7. Bảng CODE_SUBMISSIONS (Lưu code user)
+CREATE TABLE IF NOT EXISTS public.code_submissions (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  interview_id UUID REFERENCES public.interviews(id) ON DELETE CASCADE NOT NULL,
+  question_id UUID REFERENCES public.questions(id),
+  language TEXT,
+  code_content TEXT,
+  execution_result JSONB,
+  test_results JSONB,
+  ai_review JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
+);
+
+-- 8. Bảng INTERVIEW_SCORES (Chi tiết điểm số vẽ biểu đồ)
+CREATE TABLE IF NOT EXISTS public.interview_scores (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  interview_id UUID REFERENCES public.interviews(id) ON DELETE CASCADE NOT NULL,
+  metric_name TEXT,
+  score INT,
+  feedback TEXT
+);
+
+-- Create indexes for better query performance
+-- Tối ưu hóa: Chỉ giữ 13 indexes quan trọng nhất (loại bỏ 4 indexes ít dùng)
+CREATE INDEX IF NOT EXISTS idx_interviews_user_id ON public.interviews(user_id);
+CREATE INDEX IF NOT EXISTS idx_interview_messages_interview_id ON public.interview_messages(interview_id);
+CREATE INDEX IF NOT EXISTS idx_code_submissions_interview_id ON public.code_submissions(interview_id);
+CREATE INDEX IF NOT EXISTS idx_interview_scores_interview_id ON public.interview_scores(interview_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
+CREATE INDEX IF NOT EXISTS idx_interviews_template_id ON public.interviews(template_id);
+CREATE INDEX IF NOT EXISTS idx_interviews_status ON public.interviews(status);
+CREATE INDEX IF NOT EXISTS idx_interviews_started_at ON public.interviews(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_templates_active ON public.interview_templates(is_active);
+CREATE INDEX IF NOT EXISTS idx_templates_difficulty ON public.interview_templates(difficulty_level);
+CREATE INDEX IF NOT EXISTS idx_questions_type ON public.questions(type);
+CREATE INDEX IF NOT EXISTS idx_questions_difficulty ON public.questions(difficulty);

@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # Test PostgreSQL Database
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: interview-postgres-test
+    environment:
+      - POSTGRES_DB=interview_test_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres123
+    tmpfs:
+      - /var/lib/postgresql/data
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # User Service Test Runner
+  user-service-test:
+    build:
+      context: ./apps/user-service
+      dockerfile: Dockerfile
+    container_name: interview-user-service-test
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres-test:5432/interview_test_db
+      - JWT_SECRET=test-secret-key-for-testing-only
+      - JWT_ALGORITHM=HS256
+      - PYTHONPATH=/app
+    volumes:
+      - ./apps/user-service:/app
+      - ./apps/user-service/htmlcov:/app/htmlcov
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    networks:
+      - test-network
+    command: >
+      sh -c "
+        echo '🧪 Running User Service Tests...' &&
+        pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=html --cov-fail-under=80 &&
+        echo '✅ Tests completed! Coverage report available in htmlcov/'
+      "
+
+networks:
+  test-network:
+    driver: bridge

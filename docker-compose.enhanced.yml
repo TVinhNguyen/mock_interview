@@ -1,0 +1,208 @@
+version: '3.8'
+
+services:
+  # ========== DATABASE ==========
+  postgres:
+    image: postgres:15-alpine
+    container_name: interview-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=interview_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres123}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db.txt:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - interview-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========== BACKEND SERVICES ==========
+  
+  # API Gateway - Port 8000 (Routing)
+  api-gateway:
+    build:
+      context: ./apps/api-gateway
+      dockerfile: Dockerfile
+    container_name: interview-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - STT_SERVICE_URL=http://stt-service:8001
+      - LLM_SERVICE_URL=http://llm-service:8002
+      - TTS_SERVICE_URL=http://tts-service:8003
+      - USER_SERVICE_URL=http://user-service:8004
+      - INTERVIEW_SERVICE_URL=http://interview-service:8005
+      - CODE_SERVICE_URL=http://code-service:8006
+      - SCORING_SERVICE_URL=http://scoring-service:8007
+    volumes:
+      - ./apps/api-gateway:/app
+    depends_on:
+      - stt-service
+      - llm-service
+      - tts-service
+      - user-service
+      - interview-service
+    networks:
+      - interview-network
+    restart: unless-stopped
+
+  # STT Service (Speech-to-Text) - Port 8001
+  stt-service:
+    build:
+      context: ./apps/stt-service
+      dockerfile: Dockerfile
+    container_name: interview-stt-service
+    ports:
+      - "8001:8001"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    volumes:
+      - ./apps/stt-service:/app
+    networks:
+      - interview-network
+    restart: unless-stopped
+
+  # LLM Service (AI Interviewer) - Port 8002
+  llm-service:
+    build:
+      context: ./apps/llm-service
+      dockerfile: Dockerfile
+    container_name: interview-llm-service
+    ports:
+      - "8002:8002"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - ./apps/llm-service:/app
+    networks:
+      - interview-network
+    restart: unless-stopped
+
+  # TTS Service (Text-to-Speech) - Port 8003
+  tts-service:
+    build:
+      context: ./apps/tts-service
+      dockerfile: Dockerfile
+    container_name: interview-tts-service
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./apps/tts-service:/app
+      - tts-audio:/app/temp_audio
+    networks:
+      - interview-network
+    restart: unless-stopped
+
+  # User Service (Auth & Profiles) - Port 8004
+  user-service:
+    build:
+      context: ./apps/user-service
+      dockerfile: Dockerfile
+    container_name: interview-user-service
+    ports:
+      - "8004:8004"
+    environment:
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/interview_db
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+      - JWT_ALGORITHM=HS256
+    volumes:
+      - ./apps/user-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - interview-network
+    restart: unless-stopped
+
+  # Interview Service (Templates, Sessions, Questions) - Port 8005
+  interview-service:
+    build:
+      context: ./apps/interview-service
+      dockerfile: Dockerfile
+    container_name: interview-interview-service
+    ports:
+      - "8005:8005"
+    environment:
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/interview_db
+      - LLM_SERVICE_URL=http://llm-service:8002
+    volumes:
+      - ./apps/interview-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - interview-network
+    restart: unless-stopped
+
+  # Code Execution Service - Port 8006
+  code-service:
+    build:
+      context: ./apps/code-service
+      dockerfile: Dockerfile
+    container_name: interview-code-service
+    ports:
+      - "8006:8006"
+    environment:
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/interview_db
+    volumes:
+      - ./apps/code-service:/app
+    networks:
+      - interview-network
+    restart: unless-stopped
+    # Security: Limit resources for code execution
+    mem_limit: 512m
+    cpus: 0.5
+
+  # Scoring Service - Port 8007
+  scoring-service:
+    build:
+      context: ./apps/scoring-service
+      dockerfile: Dockerfile
+    container_name: interview-scoring-service
+    ports:
+      - "8007:8007"
+    environment:
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/interview_db
+      - LLM_SERVICE_URL=http://llm-service:8002
+    volumes:
+      - ./apps/scoring-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - interview-network
+    restart: unless-stopped
+
+  # ========== FRONTEND ==========
+  frontend:
+    build:
+      context: .
+      dockerfile: ./apps/frontend/Dockerfile
+    container_name: interview-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_GATEWAY_URL=http://localhost:8000
+    volumes:
+      - ./apps/frontend:/app/apps/frontend
+      - /app/apps/frontend/node_modules
+      - /app/apps/frontend/.next
+    depends_on:
+      - api-gateway
+    networks:
+      - interview-network
+    restart: unless-stopped
+
+networks:
+  interview-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  tts-audio:

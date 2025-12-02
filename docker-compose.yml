@@ -1,6 +1,28 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: interview-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=interview_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres123}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init_migration.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - interview-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # API Gateway - Port 8000
   api-gateway:
     build:
@@ -13,10 +35,20 @@ services:
       - STT_SERVICE_URL=http://stt-service:8001
       - LLM_SERVICE_URL=http://llm-service:8002
       - TTS_SERVICE_URL=http://tts-service:8003
+      - USER_SERVICE_URL=http://user-service:8004
+      - INTERVIEW_SERVICE_URL=http://interview-service:8005
+      - CODE_SERVICE_URL=http://code-service:8006
+      - SCORING_SERVICE_URL=http://scoring-service:8007
+    volumes:
+      - ./apps/api-gateway:/app
     depends_on:
       - stt-service
       - llm-service
       - tts-service
+      - user-service
+      - interview-service
+      - code-service
+      - scoring-service
     networks:
       - interview-network
     restart: unless-stopped
@@ -31,6 +63,8 @@ services:
       - "8001:8001"
     environment:
       - GROQ_API_KEY=${GROQ_API_KEY}
+    volumes:
+      - ./apps/stt-service:/app
     networks:
       - interview-network
     restart: unless-stopped
@@ -45,6 +79,8 @@ services:
       - "8002:8002"
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - ./apps/llm-service:/app
     networks:
       - interview-network
     restart: unless-stopped
@@ -58,7 +94,90 @@ services:
     ports:
       - "8003:8003"
     volumes:
+      - ./apps/tts-service:/app
       - tts-audio:/app/temp_audio
+    networks:
+      - interview-network
+    restart: unless-stopped
+
+  # User Service (Authentication & Profiles) - Port 8004
+  user-service:
+    build:
+      context: ./apps/user-service
+      dockerfile: Dockerfile
+    container_name: interview-user-service
+    ports:
+      - "8004:8004"
+    environment:
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/interview_db
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+      - JWT_ALGORITHM=HS256
+    volumes:
+      - ./apps/user-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - interview-network
+    restart: unless-stopped
+
+  # Interview Service (Templates, Sessions, Questions) - Port 8005
+  interview-service:
+    build:
+      context: ./apps/interview-service
+      dockerfile: Dockerfile
+    container_name: interview-interview-service
+    ports:
+      - "8005:8005"
+    environment:
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/interview_db
+    volumes:
+      - ./apps/interview-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - interview-network
+    restart: unless-stopped
+
+  # Code Execution Service - Port 8006
+  code-service:
+    build:
+      context: ./apps/code-service
+      dockerfile: Dockerfile
+    container_name: interview-code-service
+    ports:
+      - "8006:8006"
+    environment:
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/interview_db
+    volumes:
+      - ./apps/code-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - interview-network
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 0.5
+
+  # Scoring Service - Port 8007
+  scoring-service:
+    build:
+      context: ./apps/scoring-service
+      dockerfile: Dockerfile
+    container_name: interview-scoring-service
+    ports:
+      - "8007:8007"
+    environment:
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/interview_db
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - INTERVIEW_SERVICE_URL=http://interview-service:8005
+    volumes:
+      - ./apps/scoring-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - interview-network
     restart: unless-stopped
@@ -74,7 +193,9 @@ services:
     environment:
       - NEXT_PUBLIC_GATEWAY_URL=http://localhost:8000
     volumes:
-      - ./apps/frontend/src:/app/apps/frontend/src
+      - ./apps/frontend:/app/apps/frontend
+      - /app/apps/frontend/node_modules
+      - /app/apps/frontend/.next
     depends_on:
       - api-gateway
     networks:
@@ -86,4 +207,5 @@ networks:
     driver: bridge
 
 volumes:
+  postgres-data:
   tts-audio:

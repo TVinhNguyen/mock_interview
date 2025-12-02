@@ -1,22 +1,21 @@
 FROM node:20-alpine
 
-WORKDIR /app
+WORKDIR /app/apps/frontend
 
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
 
-# Copy all workspace files
-COPY . .
+# Copy package.json
+COPY apps/frontend/package.json ./
 
 # Install dependencies
-RUN npm install --legacy-peer-deps
+RUN npm install
 
-# Change to frontend directory
-WORKDIR /app/apps/frontend
+# Copy source code
+COPY apps/frontend ./
 
 EXPOSE 3000
 
-ENV PORT=3000
-
-# Run Next.js dev server directly
-CMD ["npx", "next", "dev", "-H", "0.0.0.0"]
+# Start dev server
+CMD ["npm", "run", "dev"]
